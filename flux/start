@@ -1,0 +1,43 @@
+#!/bin/bash -xe
+
+sudo -- sh -c "echo 127.0.0.1 $HOSTNAME >> /etc/hosts"
+sudo -- sh -c "chown -R fluxian:root /home/fluxian/.flux"
+
+WANIP=$EXTERNAL_IP
+WAN_IP=$EXTERNAL_IP
+
+# Clear the old docker.pid on restart
+sudo rm -rf /var/run/docker.pid
+sleep 3s
+
+# Start docker daemon
+sudo dockerd &
+
+# Wait a little bit for the daemon
+sleep 3s
+
+# Remove unused containers, images and networks
+# sudo docker system prune -f
+
+device_name=$(ip addr | grep 'BROADCAST,MULTICAST,UP,LOWER_UP' | head -n1 | awk '{print $2}' | sed 's/://' | sed 's/@/ /' | awk '{print $1}')
+sudo ip addr add $EXTERNAL_IP dev $device_name:0
+
+sed -i "s/EXTERNAL_IP/$EXTERNAL_IP/g" /home/fluxian/flux/config/userconfig.js
+sed -i "s/ZEL_ID/$ZEL_ID/g" /home/fluxian/flux/config/userconfig.js
+sed -i "s/ZELNODE_PRIV_KEY/$ZELNODE_PRIV_KEY/g" /home/fluxian/.flux/flux.conf
+sed -i "s/ZELNODE_OUT_POINT/$ZELNODE_OUT_POINT/g" /home/fluxian/.flux/flux.conf
+sed -i "s/ZELNODE_INDEX/$ZELNODE_INDEX/g" /home/fluxian/.flux/flux.conf
+sed -i "s/EXTERNAL_IP/$EXTERNAL_IP/g" /home/fluxian/.flux/flux.conf
+sed -i "s/RPCUSER/$RPCUSER/g" /home/fluxian/.flux/flux.conf
+sed -i "s/RPCPASSWORD/$RPCPASSWORD/g" /home/fluxian/.flux/flux.conf
+
+sudo mongod &
+# mongorestore --port 27017 --db zelcashdata /home/fluxian/dump/zelcashdata --drop
+
+sleep 20s
+fluxd &
+sleep 20s
+cd flux && npm start &
+
+# Sleep forever if things fail
+while true; do sleep 10000; done

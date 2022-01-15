@@ -1,0 +1,65 @@
+FROM arm64v8/ubuntu:focal
+
+RUN apt-get update && apt-get install -yq \
+    docker.io \
+    docker-compose && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# configure the docker daemon
+COPY conf/overlay2-daemon.json /etc/docker/daemon.json
+
+# Folder for local builds
+COPY services /usr/src/app/services
+
+WORKDIR /usr/src/app
+ARG DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /usr/src/app
+
+# Install base utilities
+RUN apt-get update && apt-get -y --no-install-recommends install build-essential libtool pkg-config nano htop pwgen figlet tmux jq zip gzip pv unzip git libc6-dev m4 g++-multilib autoconf ncurses-dev python wget curl bsdmainutils automake fail2ban apt-transport-https ca-certificates gnupg-agent software-properties-common cmake sysbench jq whiptail sudo dirmngr ufw && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install NodeJS 14
+RUN curl -sL https://deb.nodesource.com/setup_14.x -o setup_14.sh && /bin/sh setup_14.sh && apt update && apt-get install -y nodejs && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install MongDB
+RUN wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
+RUN echo "deb [ arch=$(dpkg --print-architecture) ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-4.4.list && apt-get update && apt-get install -y mongodb-org && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create a User
+RUN useradd --uid 1001 -g root -m fluxian \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo fluxian ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/fluxian \
+    && chmod 0440 /etc/sudoers.d/fluxian
+
+RUN usermod -aG sudo fluxian
+RUN usermod -aG docker fluxian
+RUN usermod -aG mongodb fluxian
+
+USER fluxian
+WORKDIR /home/fluxian
+
+# Install Flux
+RUN echo 'deb https://apt.runonflux.io/ '$(lsb_release -cs)' main' | sudo tee --append /etc/apt/sources.list.d/flux.list && gpg --keyserver keyserver.ubuntu.com --recv 4B69CA27A986265D && gpg --export 4B69CA27A986265D | sudo apt-key add -
+
+RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends flux fluxbench zelcash zelbench zelcore && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
+
+RUN git clone https://github.com/runonflux/flux && cd flux && npm install --legacy-peer-deps
+RUN mkdir /home/fluxian/.flux && cd /home/fluxian/.flux && wget https://fluxnodeservice.com/daemon_bootstrap.tar.gz && tar xzf daemon_bootstrap.tar.gz && rm daemon_bootstrap.tar.gz
+# RUN wget https://fluxnodeservice.com/mongod_bootstrap.tar.gz && tar xzvf mongod_bootstrap.tar.gz && rm mongod_bootstrap.tar.gz
+
+# Configuration
+RUN zelcash-fetch-params.sh
+COPY userconfig.js flux/config/userconfig.js
+COPY flux.conf /home/fluxian/.flux/flux.conf
+
+COPY start .
+
+RUN sudo chown fluxian /home/fluxian/.flux
+VOLUME /home/fluxian/.flux
+
+EXPOSE 16124 16125 16126 16127 16128 16224 16225
+
+CMD ["bash", "start"]
+
