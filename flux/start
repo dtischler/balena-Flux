@@ -3,6 +3,11 @@
 sudo -- sh -c "echo 127.0.0.1 $HOSTNAME >> /etc/hosts"
 sudo -- sh -c "chown -R fluxian:root /data/flux"
 
+sudo mount /dev/sda1 /mnt
+sudo fallocate -l 4G /mnt/swapfile
+sudo mkswap /mnt/swapfile
+sudo swapon /mnt/swapfile
+
 WANIP=$EXTERNAL_IP
 WAN_IP=$EXTERNAL_IP
 
